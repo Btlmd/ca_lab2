@@ -35,15 +35,17 @@ int main() {
 
     // TODO: Your optimized code:
     //======================================================
-    constexpr size_t BLOCK_SIZE = 8;
+    constexpr size_t BLOCK_SIZE = 16;
     static_assert(MATRIX_SIZE % BLOCK_SIZE == 0, "MATRIX_SIZE % BLOCK_SIZE != 0");
-    for (size_t blk = 0; blk < MATRIX_SIZE / BLOCK_SIZE; ++blk)
-        for (i = 0; i < MATRIX_SIZE; i ++)
+    for (size_t blk = 0; blk < MATRIX_SIZE / BLOCK_SIZE; ++blk) {
+        for (i = 0; i < MATRIX_SIZE; i ++) {
             for (k = blk * BLOCK_SIZE; k < (blk + 1) * BLOCK_SIZE; k ++) {
                 register int tmp = a[i][k];
                 for (j = 0; j < MATRIX_SIZE; j ++)
                     d[i][j] += tmp * b[k][j];
             }
+        }
+    }
     // Stop here.
     //======================================================
 

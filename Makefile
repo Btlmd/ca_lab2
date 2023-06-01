@@ -1,6 +1,5 @@
 all: read mm 
 
-
 read: read.cpp
 	mkdir -p build
 	g++ -O3 -o build/read -Wextra read.cpp

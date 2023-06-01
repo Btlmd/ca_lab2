@@ -17,20 +17,18 @@ void bind(size_t cpuid)
 }
 
 template <typename T, size_t leap>
-T test_cache_size(std::ofstream &fout)
+void test_cache_size(std::ofstream &fout)
 {
-    constexpr size_t upper = 128;
-    constexpr size_t deno = 4;
-    constexpr size_t samples = 100'000'000;
+    constexpr size_t upper_kb = 64 * 1024;
+    constexpr size_t lower_kb = 1;
+
+    constexpr size_t samples = 1'000'000'000;
     std::vector<size_t> test_sizes;
-    for (size_t c = 0; c < deno; ++c)
+
+    for (size_t i = lower_kb * 1024; i <= upper_kb * 1024; i *= 2)
     {
-        for (size_t i = 1 * 1024; i <= 1024 * 1024 * upper; i *= 2)
-        {
-            test_sizes.push_back(i + i * c / deno);
-        }
+        test_sizes.push_back(i);
     }
-    std::sort(test_sizes.begin(), test_sizes.end());
 
     const size_t max_arr_len = *std::max_element(test_sizes.cbegin(), test_sizes.cend()) / sizeof(T);
     register auto a = new T[max_arr_len];
@@ -42,27 +40,25 @@ T test_cache_size(std::ofstream &fout)
     for (const auto size : test_sizes)
     {
         size_t arr_len = size / sizeof(T);
+        size_t size_mask = arr_len - 1;
         auto begin = std::chrono::high_resolution_clock::now();
         for (register size_t i = 0; i < samples * leap; i += leap)
         {
-            register auto pos = i % arr_len;
-            a[pos] += 11452 + pos;
+            a[i & size_mask] = i;
         }
         auto elapsed = std::chrono::duration_cast<time_unit_t>(std::chrono::high_resolution_clock::now() - begin).count();
-        fout << size << "|"<< elapsed << std::endl;
+        fout << size << "|" << elapsed << std::endl;
     }
 
-    auto ret = a[a[0] % max_arr_len];
     delete[] a;
-    return ret;
 }
 
 template <typename T>
-T test_cache_line_size(std::ofstream &fout)
+void test_cache_line_size(std::ofstream &fout)
 {
-    constexpr size_t mem_len = 1024 * 1024 * 1024;
-    constexpr size_t arr_len = mem_len / sizeof(uint8_t);
-    constexpr size_t samples = 100'000'000;
+    constexpr size_t mem_len = 64 * 1024;
+    constexpr size_t arr_len = mem_len / sizeof(T);
+    constexpr size_t samples = 1'000'000'000;
     std::vector<size_t> test_sizes;
 
     for (size_t i = 4; i <= 512; i *= 2)
@@ -75,63 +71,47 @@ T test_cache_line_size(std::ofstream &fout)
 
     for (const auto size : test_sizes)
     {
-        const register size_t step = size / sizeof(uint8_t);
+        const register size_t step = size / sizeof(T);
         auto begin = std::chrono::high_resolution_clock::now();
+        size_t size_mask = arr_len - 1;
         for (register size_t i = 0; i < samples * step; i += step)
         {
-            a[i % arr_len] += 114 + i;
+            a[i & size_mask] = i;
         }
         auto elapsed = std::chrono::duration_cast<time_unit_t>(std::chrono::high_resolution_clock::now() - begin).count();
         fout << size << "|" << elapsed << std::endl;
     }
-
-    auto ret = a[a[0] % arr_len];
     delete[] a;
-    return ret;
 }
 
 void test_cache_associativity(std::ofstream &fout)
 {
-    constexpr size_t l1_size = 1024 * (1024 + 512);
-    constexpr size_t l1_len = l1_size / sizeof(size_t);
-    constexpr size_t samples = 100'000'000;
-    constexpr size_t max_step = 32;
-    auto a = new size_t[l1_len * max_step];
+    constexpr size_t l1d_size = 32 * 1024;
+    constexpr size_t arr_len = l1d_size * 2 / sizeof(uint64_t);
+    constexpr size_t arr_mask = arr_len - 1;
+    constexpr size_t samples = 1'000'000'000;
 
-    // warm up
-    {
-        register size_t step = 10;
-        for (register size_t i = 0, pos = 0; i < samples; ++i, pos += l1_len)
-        {
-            if (__glibc_unlikely(pos >= l1_len * step)) {
-                pos -= l1_len * step;
-            }
-            a[pos]++;
-        }
-    }
+    uint64_t *a = new uint64_t[arr_len];
 
-    // test cache associativity
-    for (register size_t step = 1; step < max_step; ++step)
+    for (size_t n = 1; n <= 7; ++n)
     {
-        size_t pos = 0;
+        const size_t block_count = 1 << n;
+        const size_t stride = arr_len / block_count * 2;
+
         auto begin = std::chrono::high_resolution_clock::now();
-        for (register size_t i = 0, pos = 0; i < samples; ++i, pos += l1_len)
+        for (register size_t i = 0; i < samples * stride; i += stride)
         {
-            if (__glibc_unlikely(pos >= l1_len * step)) {
-                pos -= l1_len * step;
-            }
-            a[pos]++;
+            a[i & arr_mask] = i;
         }
         auto elapsed = std::chrono::duration_cast<time_unit_t>(std::chrono::high_resolution_clock::now() - begin).count();
-        fout << step << "|" << elapsed << std::endl;
+        fout << n << "|" << elapsed << std::endl;
     }
-    delete[] a;
 }
 
 int main()
 {
-    bind(105);
-    
+    bind(0);
+
     {
         std::ofstream fout("result_cache_size.txt");
         test_cache_size<uint8_t, 512>(fout);
